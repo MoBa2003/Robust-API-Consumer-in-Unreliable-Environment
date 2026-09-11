@@ -1,6 +1,5 @@
-Rolling back strategies in Distributed Systems (According to my Research in Web and get help of LLMS) : 
+Rolling back strategies in Distributed Systems (According to my Research in Websites and get help from LLMs) : 
 
-Distributed Rollback Strategies
 Saga Pattern (Compensating Transactions): Breaks a distributed transaction into independent local steps. If a failure occurs mid-process, it issues compensating actions (e.g., executing a DELETE after a failed POST) to undo previous successful steps and restore consistency.
 
 Idempotent Retry-to-Target-State: Leverages the idempotency of HTTP methods and eventual consistency. Instead of rolling back, it uses exponential backoff to continuously retry the failed operation until every node reaches the desired target state.
