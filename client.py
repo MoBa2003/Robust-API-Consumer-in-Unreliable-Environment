@@ -3,109 +3,132 @@ import logging
 from typing import List, Dict, Optional
 import httpx
 
-# Configure module logger for tracing cluster operations and errors
 logger = logging.getLogger(__name__)
 
-
-# =====================================================================
-# Custom Exceptions
-# =====================================================================
-class ClusterClientError(Exception):
-    """Base exception class for all cluster client errors."""
+class ClusterStateError(Exception):
+    """Raised when the cluster enters an unstable state or operations fail."""
     pass
-
-
-class GroupCreationError(ClusterClientError):
-    """Raised when group creation fails on any node and triggers a rollback."""
-    pass
-
-
-class GroupDeletionError(ClusterClientError):
-    """Raised when group deletion fails on one or more cluster nodes."""
-    pass
-
-
-class RollbackFailedError(ClusterClientError):
-    """Critical error raised when rollback operation fails on one or more nodes."""
-    pass
-
 
 class ClusterClient:
-  
-
     def __init__(self, hosts: List[str], timeout: float = 5.0, max_retries: int = 3):
         self.hosts = [host.rstrip('/') for host in hosts]
         self.timeout = timeout
         self.max_retries = max_retries
 
-    async def create_group(self, group_id: str) -> None:
-        created_nodes: List[str] = []
-        payload = {"groupId": group_id}
+    async def _check_nodes_health(self, client: httpx.AsyncClient) -> bool:
+        """
+        TCC Try Phase: Checks if all nodes in the cluster are responsive.
+        Since there is no explicit /health endpoint, it sends a GET request for a dummy ID.
+        Receiving a response (even 404 Not Found) means the node is up.
+        """
+        for host in self.hosts:
+            try:
+                response = await client.get(f"{host}/v1/group/health_check_dummy/")
+                if response.status_code not in (200, 404):
+                    return False
+            except httpx.RequestError:
+                return False
+        return True
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for host in self.hosts:
-                url = f"{host}/v1/group/"
-                try:
-                    response = await client.post(url, json=payload)
-                    
-                    # 201 CREATED indicates successful creation on this node
-                    if response.status_code == 201:
-                        logger.info(f"Successfully created group '{group_id}' on node: {host}")
-                        created_nodes.append(host)
-                    else:
-                        error_msg = f"Node '{host}' returned status code {response.status_code}: {response.text}"
-                        logger.error(f"Failed to create group '{group_id}' on {host}. {error_msg}")
-                        
-                        # Trigger rollback on all nodes created so far
-                        await self._rollback_creation(client, group_id, created_nodes)
-                        raise GroupCreationError(f"Creation failed on '{host}'. Rollback executed. Details: {error_msg}")
+    async def _create_on_node(self, client: httpx.AsyncClient, host: str, group_id: str) -> Optional[httpx.Response]:
+        """Creates a group on a single node and returns the raw response regardless of status."""
+        try:
+            return await client.post(f"{host}/v1/group/", json={"groupId": group_id})
+        except httpx.RequestError:
+            return None
 
-                except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-                    logger.error(f"Network or server error on {host} while creating group '{group_id}': {exc}")
-                    
-                    # Trigger rollback on all nodes created so far
-                    await self._rollback_creation(client, group_id, created_nodes)
-                    raise GroupCreationError(f"Creation failed on '{host}' due to error: {exc}. Rollback executed.")
-    async def _rollback_creation(self, client: httpx.AsyncClient, group_id: str, nodes_to_rollback: List[str]) -> None:
-        
-        if not nodes_to_rollback:
-            logger.info("No nodes require rollback.")
-            return
-
-        logger.warning(f"Initiating rollback for group '{group_id}' on nodes: {nodes_to_rollback}")
-        failed_rollback_nodes: List[str] = []
-
-        for host in nodes_to_rollback:
-            success = await self._delete_with_retry(client, host, group_id)
-            if not success:
-                failed_rollback_nodes.append(host)
-
-        if failed_rollback_nodes:
-            critical_msg = f"Critical Error: Failed to roll back group '{group_id}' on nodes: {failed_rollback_nodes}"
-            logger.critical(critical_msg)
-            raise RollbackFailedError(critical_msg)
-
-    async def _delete_with_retry(self, client: httpx.AsyncClient, host: str, group_id: str) -> bool:
-        
+    async def _delete_on_node_with_retry(self, client: httpx.AsyncClient, host: str, group_id: str) -> Optional[httpx.Response]:
+        """Deletes a group from a single node with built-in exponential backoff retries."""
         url = f"{host}/v1/group/"
         payload = {"groupId": group_id}
-
+        last_response = None
+        
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = await client.request("DELETE", url, json=payload)
+                last_response = response
                 
-                # 200 OK means deleted; 404 Not Found is treated as successful rollback idempotency
                 if response.status_code in (200, 404):
-                    logger.info(f"Rollback succeeded on {host} for group '{group_id}' (Attempt {attempt})")
-                    return True
-                
-                logger.warning(f"Rollback attempt {attempt} on {host} returned status: {response.status_code}")
-            except httpx.RequestError as exc:
-                logger.warning(f"Rollback attempt {attempt} on {host} failed with network error: {exc}")
-
-            # Exponential backoff (1s, 2s, 4s...) before next retry
+                    return response
+            except httpx.RequestError:
+                last_response = None
+            
             if attempt < self.max_retries:
-                backoff_time = 2 ** (attempt - 1)
-                await asyncio.sleep(backoff_time)
+                await asyncio.sleep(2 ** (attempt - 1))
+                
+        return last_response
 
-        return False
+    async def create_group(self, group_id: str) -> None:
+        """
+        Creates a group using TCC for validation and Saga for rollback.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # 1. TCC Try Phase
+            if not await self._check_nodes_health(client):
+                raise ClusterStateError("TCC Try Phase Failed: Not all nodes are responsive.")
+
+            created_nodes = []
+            
+            # 2. Confirm Phase & Saga Execution
+            for host in self.hosts:
+                response = await self._create_on_node(client, host, group_id)
+                
+                if response and response.status_code in (201, 400):
+                    if response.status_code == 400:
+                        logger.info(f"Group {group_id} already exists on {host} (400). Treated as success.")
+                    else:
+                        logger.info(f"Group {group_id} successfully created on {host} (201).")
+                        
+                    created_nodes.append(host)
+                else:
+                    logger.error(f"Error creating group on {host}. Initiating Saga Rollback.")
+                    
+                    unstable = False
+                    # 3. Rollback
+                    for rollback_host in created_nodes:
+                        del_response = await self._delete_on_node_with_retry(client, rollback_host, group_id)
+                        
+                        if not del_response or del_response.status_code not in (200, 404):
+                            logger.critical(f"System is in an unstable state! Rollback failed on {rollback_host}.")
+                            unstable = True
+                            
+                    if not unstable and created_nodes:
+                        logger.info("Rollback executed successfully. System is consistent.")
+                        
+                    raise ClusterStateError(f"Group creation aborted and rolled back due to failure on {host}.")
+
+    async def delete_group(self, group_id: str) -> None:
+        """
+        Deletes a group using TCC for validation and Retry-to-Target for resiliency.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # 1. TCC Try Phase
+            if not await self._check_nodes_health(client):
+                raise ClusterStateError("TCC Try Phase Failed: Not all nodes are responsive.")
+
+            # 2. Confirm Phase with Retries
+            for host in self.hosts:
+                response = await self._delete_on_node_with_retry(client, host, group_id)
+                
+                if not response or response.status_code not in (200, 404):
+                    logger.critical(f"System is in an unstable state! Failed to delete on {host} after all retries.")
+                    raise ClusterStateError("System is in an unstable state during deletion.")
+            
+            logger.info(f"Group {group_id} successfully deleted from all nodes.")
+
+    async def get_group(self, group_id: str) -> Optional[Dict]:
+        """
+        Retrieves the group status from the first available node.
+        No rollback mechanism required.
+        """
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            for host in self.hosts:
+                try:
+                    response = await client.get(f"{host}/v1/group/{group_id}/")
+                    if response.status_code == 200:
+                        return response.json()
+                    elif response.status_code == 404:
+                        return None
+                except httpx.RequestError:
+                    continue
+            return None
