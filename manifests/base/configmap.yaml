@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-client-config
+  labels:
+    app.kubernetes.io/name: cluster-client
+data:
+  CLUSTER_HOSTS: "http://node1.example.com,http://node2.example.com,http://node3.example.com"
+  CLIENT_TIMEOUT: "5.0"
+  MAX_RETRIES: "3"

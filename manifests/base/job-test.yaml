@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cluster-client-unit-tests
+  labels:
+    app.kubernetes.io/name: cluster-client-tests
+spec:
+  template:
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: unit-tests
+          image: cluster-client:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "unittest", "test_client.py"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - mountPath: /tmp
+              name: tmp-volume
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+      restartPolicy: Never
+  backoffLimit: 2

@@ -26,6 +26,13 @@ class ClusterClient:
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.client = httpx.Client(timeout=self.timeout)
+    
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
 
     # -------------------------------------------------------------------------
     # 1. Helper Functions (TCC Check, Single Node Create, Single Node Delete)

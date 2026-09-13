@@ -1,0 +1,13 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: api-consumer
+build:
+  artifacts:
+    - image: cluster-client
+      docker:
+        dockerfile: Dockerfile
+manifests:
+  kustomize:
+    paths:
+      - manifests/base
