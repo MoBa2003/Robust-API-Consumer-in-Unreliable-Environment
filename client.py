@@ -118,7 +118,7 @@ class ClusterClient:
         if not self.check_all_nodes_ok(group_id):
             logger.error("Create operation aborted: TCC check failed (one or more nodes are down/unresponsive).")
             return {
-                "status": "failed",
+                "status": "TCC failed",
                 "message": "TCC health check failed. Not all cluster nodes are ready."
             }
 
@@ -185,7 +185,7 @@ class ClusterClient:
         if not self.check_all_nodes_ok(group_id):
             logger.error("Delete operation aborted: TCC check failed (one or more nodes are down/unresponsive).")
             return {
-                "status": "failed",
+                "status": "TCC failed",
                 "message": "TCC health check failed. Not all cluster nodes are ready."
             }
 

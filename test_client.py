@@ -12,7 +12,7 @@ from client import ClusterClient
 class TestClusterClient(unittest.TestCase):
 
     def setUp(self):
-        self.hosts = ["http://node1.example.com", "http://node2.example.com"]
+        self.hosts = ["http://node1.example.com", "http://node2.example.com","http://node3.example.com"]
         self.client = ClusterClient(hosts=self.hosts, timeout=2.0, max_retries=3, retry_backoff=0.01)
 
     def tearDown(self):
@@ -32,7 +32,7 @@ class TestClusterClient(unittest.TestCase):
         result = self.client.check_all_nodes_ok("group1")
 
         self.assertTrue(result)
-        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(mock_get.call_count, len(self.hosts))
 
     @patch.object(httpx.Client, 'get')
     def test_check_all_nodes_ok_server_error(self, mock_get):
@@ -153,20 +153,23 @@ class TestClusterClient(unittest.TestCase):
         """create_group fails if TCC health check fails."""
         res = self.client.create_group("group1")
 
-        self.assertEqual(res["status"], "failed")
+        self.assertEqual(res["status"], "TCC failed")
+
 
     @patch.object(ClusterClient, 'create_group_on_node')
     @patch.object(ClusterClient, 'check_all_nodes_ok', return_value=True)
     def test_create_group_success_all_nodes(self, mock_tcc, mock_create_node):
         """create_group succeeds across all nodes."""
-        mock_response = MagicMock(spec=httpx.Response)
-        mock_response.status_code = 201
-        mock_create_node.return_value = mock_response
+        resp_201 = MagicMock(spec=httpx.Response)
+        resp_201.status_code = 201
+        resp_400 = MagicMock(spec=httpx.Response)
+        resp_400.status_code = 400
+        mock_create_node.side_effect = [resp_201,resp_400,resp_400]
 
         res = self.client.create_group("group1")
 
         self.assertEqual(res["status"], "success")
-        self.assertEqual(mock_create_node.call_count, 2)
+        self.assertEqual(mock_create_node.call_count, len(self.hosts))
 
     @patch.object(ClusterClient, 'delete_group_on_node_with_retry')
     @patch.object(ClusterClient, 'create_group_on_node')
@@ -179,7 +182,7 @@ class TestClusterClient(unittest.TestCase):
         resp_500 = MagicMock(spec=httpx.Response)
         resp_500.status_code = 500
 
-        mock_create_node.side_effect = [resp_201, resp_500]
+        mock_create_node.side_effect = [resp_201, resp_500,resp_201]
 
         resp_del_200 = MagicMock(spec=httpx.Response)
         resp_del_200.status_code = 200
@@ -202,17 +205,22 @@ class TestClusterClient(unittest.TestCase):
         resp_500 = MagicMock(spec=httpx.Response)
         resp_500.status_code = 500
 
-        mock_create_node.side_effect = [resp_201, resp_500]
+        mock_create_node.side_effect = [resp_201,resp_201,resp_500]
         mock_del_node.return_value = None  # Delete failed after retries
 
         res = self.client.create_group("group1")
-
         self.assertEqual(res["status"], "unstable")
-        self.assertIn("http://node1.example.com", res["remaining_nodes_after_rollback"])
+        self.assertEqual(["http://node1.example.com","http://node2.example.com"], res["remaining_nodes_after_rollback"])
 
     # -------------------------------------------------------------------------
     # 5. Tests for delete_group & get_group
     # -------------------------------------------------------------------------
+
+    
+    @patch.object(ClusterClient,'check_all_nodes_ok',return_value=False)
+    def test_delete_group_tcc_failed(self,mock_tcc):
+        res = self.client.delete_group("group1")
+        self.assertEqual(res["status"], "TCC failed")
 
     @patch.object(ClusterClient, 'delete_group_on_node_with_retry')
     @patch.object(ClusterClient, 'check_all_nodes_ok', return_value=True)
@@ -232,7 +240,9 @@ class TestClusterClient(unittest.TestCase):
         """delete_group returns unstable if one node fails to delete after retries."""
         resp_200 = MagicMock(spec=httpx.Response)
         resp_200.status_code = 200
-        mock_del_node.side_effect = [resp_200, None]
+        resp_404 = MagicMock(spec=httpx.Response)
+        resp_404.status_code = 404
+        mock_del_node.side_effect = [resp_404, None,resp_200]
 
         res = self.client.delete_group("group1")
 
