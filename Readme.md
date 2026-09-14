@@ -298,24 +298,24 @@ The 2-replica Deployment pods execute the main client loop (`main.py`), periodic
 
 To stop the running application, tear down the local Kubernetes cluster, and free up system resources (CPU and Memory):
 
-### 6.1. Stop Skaffold Development Loop
+### 7.1. Stop Skaffold Development Loop
 If `skaffold dev` is actively running in your terminal window:
 - Press **`Ctrl + C`** in the terminal window.
 - Skaffold will automatically clean up deployed Kubernetes manifests, services, and pods before exiting.
 
-### 6.2. Delete the Kind Kubernetes Cluster
+### 7.2. Delete the Kind Kubernetes Cluster
 To remove the local Kind cluster (`cluster-client-cluster`) and free up system RAM:
 ```bash
 kind delete cluster --name cluster-client-cluster
 ```
 
-### 6.3. Purge Docker Build Cache (Optional)
+### 7.3. Purge Docker Build Cache (Optional)
 To clear unused Docker build caches and temporary container layers:
 ```bash
 docker system prune -f
 ```
 
-### 6.4. Stop Docker Desktop
+### 7.4. Stop Docker Desktop
 If you no longer require the Docker daemon:
 - Right-click the Docker Desktop whale icon in the System Tray / Menu Bar.
 - Select **Quit Docker Desktop**.
