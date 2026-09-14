@@ -1,4 +1,4 @@
-# Robust API-Consumer Client in Unreliable Environment
+# Robust API-Consumer in Unreliable Environment
 
 A production-ready, fault-tolerant Python API client designed to manage distributed group records across unreliable cluster nodes, fully containerized and deployable on Kubernetes with hardened security practices.
 
