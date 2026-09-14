@@ -24,7 +24,7 @@ A production-ready, fault-tolerant Python API client designed to manage distribu
 - [5. Execution Guide](#5-execution-guide)
   - [Option 1: Direct Execution in Python Environment](#option-1-direct-execution-in-python-environment)
   - [Option 2: Deployment on Local Kubernetes Cluster (Kind + Skaffold)](#option-2-deployment-on-local-kubernetes-cluster-kind--skaffold)
-- [6. Execution & Verification Screenshots (Logs Showcase)](#6-execution--verification-screenshots-logs-showcase)
+- [6. Execution & Results Screenshots](#6-execution--results-screenshots)
   - [6.1. Unit Test Job Execution Logs (`kubectl logs job/cluster-client-unit-tests`)](#1-unit-test-job-execution-logs-kubectl-logs-jobcluster-client-unit-tests)
   - [6.2. Client Runner Deployment Logs (`kubectl logs -l app.kubernetes.io/name=cluster-client`)](#62-client-runner-deployment-logs-kubectl-logs--l-appkubernetesionamecluster-client)
 - [7. Teardown & Cleanup Guide](#7-teardown--cleanup-guide)
@@ -270,7 +270,7 @@ kubectl logs -l app.kubernetes.io/name=cluster-client --tail=50
 ---
 
 
-## 6. Execution & Verification Screenshots (Logs Showcase)
+## 6. Execution & Results Screenshots
 
 This section highlights the successful execution of both the automated **Unit Test Job** (`cluster-client-unit-tests`) and the **Client Deployment Pods** (`cluster-client`) running on the local Kubernetes cluster.
 
@@ -278,14 +278,14 @@ This section highlights the successful execution of both the automated **Unit Te
 
 When the Kubernetes Job is launched by Skaffold, all 18 unit tests are executed automatically inside an isolated, read-only container environment:
 
-![Unit Test Job Execution Logs](Screenshots/Tests_pod.png)
+![Unit Test Job Execution Logs](Screenshots/Tests_Pod.png)
 
 
 ### 6.2. Client Runner Deployment Logs (`kubectl logs -l app.kubernetes.io/name=cluster-client`)
 
 The 2-replica Deployment pods execute the main client loop (`main.py`), periodically interacting with the cluster hosts and logging transaction results:
 
-![Client Runner Deployment Logs](Screenshots/Client_pod.png)
+![Client Runner Deployment Logs](Screenshots/Client_Pod.png)
 
 > This log output is produced by the client deployment pods running `main.py`. Upon container startup, the client immediately performs an initial health check across all target nodes (`check_all_nodes_ok`). Because the configured dummy node endpoints (`http://node1.example.com`, etc.) do not exist in the local network DNS, the client encounters a `[Errno -2] Name or service not known` resolution error during the health check. Rather than crashing or failing unhandled, the application gracefully catches the exception, logs a warning, and sets the TCC status to `False`, thereby aborting any further state-modifying requests. This behavior **demonstrates that the Try-Confirm-Cancel (TCC) pattern is functioning exactly as designed**. Instead of blindly attempting state mutations (`POST` / `DELETE`) on unreachable nodes, the client safely aborts the transaction early, preventing partial cluster writes and maintaining data integrity across unreliable infrastructure.
 
