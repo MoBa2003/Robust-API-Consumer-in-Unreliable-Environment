@@ -25,7 +25,7 @@ A production-ready, fault-tolerant Python API client designed to manage distribu
   - [Option 1: Direct Execution in Python Environment](#option-1-direct-execution-in-python-environment)
   - [Option 2: Deployment on Local Kubernetes Cluster (Kind + Skaffold)](#option-2-deployment-on-local-kubernetes-cluster-kind--skaffold)
 - [6. Execution & Results Screenshots](#6-execution--results-screenshots)
-  - [6.1. Unit Test Job Execution Logs (`kubectl logs job/cluster-client-unit-tests`)](#1-unit-test-job-execution-logs-kubectl-logs-jobcluster-client-unit-tests)
+  - [6.1. Unit Test Job Execution Logs (`kubectl logs job/cluster-client-unit-tests`)](#61-unit-test-job-execution-logs-kubectl-logs-jobcluster-client-unit-tests)
   - [6.2. Client Runner Deployment Logs (`kubectl logs -l app.kubernetes.io/name=cluster-client`)](#62-client-runner-deployment-logs-kubectl-logs--l-appkubernetesionamecluster-client)
 - [7. Teardown & Cleanup Guide](#7-teardown--cleanup-guide)
   - [7.1. Stop Skaffold Development Loop](#71-stop-skaffold-development-loop)

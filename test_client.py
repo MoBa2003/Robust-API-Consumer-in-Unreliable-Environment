@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import httpx
 
-# Ensure scratch path is in sys.path
+
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from client import ClusterClient
 
